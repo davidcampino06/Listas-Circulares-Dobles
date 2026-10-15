@@ -1,0 +1,299 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Circular Bus Route</title>
+<style>
+  :root{
+    --bg:#f4f6fb; --card:#fff; --ink:#1f2a52; --muted:#6b7394; --line:#dfe3ef;
+    --blue:#4f7cff; --purple:#8e2a91; --orange:#ff7a2f; --green:#19b37a; --red:#e54b4b;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--ink)}
+  header{background:var(--ink);color:#fff;padding:18px 24px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px}
+  header h1{margin:0;font-size:1.35rem}
+  header span{opacity:.75;font-size:.9rem}
+  main{display:grid;grid-template-columns:1.3fr 1fr;gap:18px;padding:18px;max-width:1300px;margin:auto}
+  @media(max-width:900px){main{grid-template-columns:1fr}}
+  .card{background:var(--card);border-radius:14px;padding:16px 18px;box-shadow:0 2px 10px rgba(31,42,82,.07)}
+  .card h2{margin:0 0 12px;font-size:1.05rem;color:var(--purple)}
+  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:12px}
+  .stat{background:var(--bg);border-radius:10px;padding:10px;text-align:center}
+  .stat b{display:block;font-size:1.3rem}
+  .stat small{color:var(--muted)}
+  svg{width:100%;height:auto;display:block}
+  .controls{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+  button{border:0;border-radius:9px;padding:9px 14px;font-weight:600;cursor:pointer;background:var(--blue);color:#fff;font-size:.9rem}
+  button:hover{filter:brightness(1.08)}
+  button.sec{background:var(--bg);color:var(--ink);border:1px solid var(--line)}
+  button.orange{background:var(--orange)} button.green{background:var(--green)} button.red{background:var(--red)}
+  label{font-size:.82rem;color:var(--muted);display:block;margin:6px 0 3px}
+  input,select{width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:8px;font-size:.92rem}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .side{display:flex;flex-direction:column;gap:18px}
+  .msg{margin-top:10px;font-size:.9rem;padding:8px 10px;border-radius:8px;display:none}
+  .msg.err{display:block;background:#fde8e8;color:var(--red)}
+  .msg.okm{display:block;background:#e3f7ee;color:#0d7a52}
+  .traversal{font-size:.88rem;line-height:1.7}
+  .traversal b{color:var(--purple)}
+  .memory{display:flex;gap:10px;overflow-x:auto;padding-bottom:6px}
+  .node{min-width:150px;border:2px solid var(--ink);border-radius:8px;font-size:.78rem;flex-shrink:0}
+  .node.head{border-color:var(--orange)}
+  .node .t{background:var(--ink);color:#fff;padding:5px 7px;font-weight:700}
+  .node.head .t{background:var(--orange)}
+  .node div.c{padding:4px 7px;border-top:1px solid var(--line)}
+  .node .p{color:var(--blue);font-weight:600}
+  ul.hist{margin:0;padding-left:18px;font-size:.85rem;color:var(--muted);max-height:180px;overflow:auto}
+  .result{margin-top:10px;font-size:.9rem;background:var(--bg);border-radius:8px;padding:10px;display:none}
+  .full{grid-column:1/-1}
+  .svg-node{cursor:pointer}
+</style>
+</head>
+<body>
+<header>
+  <h1>🚌 <span id="routeName" style="opacity:1;font-size:1.35rem">Circular Route</span></h1>
+  <span>Circular Doubly Linked List · Data Structures</span>
+</header>
+
+<main>
+  <section class="card">
+    <h2>Route map</h2>
+    <div class="stats">
+      <div class="stat"><b id="sStops">0</b><small>Stops</small></div>
+      <div class="stat"><b id="sLap">0</b><small>Min. per lap</small></div>
+      <div class="stat"><b id="sOnBoard">0</b><small>On board</small></div>
+      <div class="stat"><b id="sWaiting">0</b><small>Waiting</small></div>
+    </div>
+    <svg id="map" viewBox="-60 0 720 520"></svg>
+    <div class="controls">
+      <button onclick="action('/api/bus/move')">▶ Move bus</button>
+      <button class="orange" onclick="action('/api/bus/direction')">⇄ Switch direction</button>
+      <button class="sec" id="btnAuto" onclick="toggleAuto()">⏵ Auto</button>
+      <button class="green" onclick="action('/api/passengers')">👥 New passengers</button>
+      <button class="sec" onclick="action('/api/reset')">↺ Reset</button>
+    </div>
+    <p style="font-size:.82rem;color:var(--muted);margin:10px 0 0">Click a stop on the map to see its details. The orange stop is the list <code>head</code>.</p>
+  </section>
+
+  <div class="side">
+    <section class="card">
+      <h2>Add stop</h2>
+      <div class="row">
+        <div><label>Name</label><input id="fName" placeholder="e.g. Library"></div>
+        <div><label>Neighborhood</label><input id="fNeighborhood" placeholder="e.g. Downtown"></div>
+      </div>
+      <div class="row">
+        <div><label>Minutes to next stop</label><input id="fTime" type="number" min="1" value="5"></div>
+        <div><label>Waiting passengers</label><input id="fPassengers" type="number" min="0" value="0"></div>
+      </div>
+      <div class="row">
+        <div><label>Position</label>
+          <select id="fPosition" onchange="document.getElementById('refBox').style.display=this.value==='after'?'block':'none'">
+            <option value="end">At the end</option>
+            <option value="beginning">At the beginning</option>
+            <option value="after">After…</option>
+          </select></div>
+        <div id="refBox" style="display:none"><label>Reference stop</label><select id="fRef"></select></div>
+      </div>
+      <div class="controls"><button onclick="addStop()">+ Add</button></div>
+      <div id="msgAdd" class="msg"></div>
+    </section>
+
+    <section class="card">
+      <h2>Close stop</h2>
+      <label>Stop to delete</label>
+      <select id="fDelete"></select>
+      <div class="controls"><button class="red" onclick="deleteStop()">✕ Close stop</button></div>
+      <div id="msgDelete" class="msg"></div>
+    </section>
+
+    <section class="card">
+      <h2>Which direction is faster?</h2>
+      <div class="row">
+        <div><label>Origin</label><select id="fOrigin"></select></div>
+        <div><label>Destination</label><select id="fDestination"></select></div>
+      </div>
+      <div class="controls"><button onclick="shortestRoute()">Calculate</button></div>
+      <div id="resShortest" class="result"></div>
+    </section>
+  </div>
+
+  <section class="card full">
+    <h2>Memory view (nodes with prev / next pointers)</h2>
+    <div id="memory" class="memory"></div>
+  </section>
+
+  <section class="card">
+    <h2>List traversals</h2>
+    <div class="traversal"><b>Clockwise (next):</b> <span id="tCw"></span></div>
+    <div class="traversal"><b>Counterclockwise (prev):</b> <span id="tCcw"></span></div>
+    <div id="stopInfo" class="result"></div>
+  </section>
+
+  <section class="card">
+    <h2>Event history</h2>
+    <ul id="eventLog" class="hist"></ul>
+  </section>
+</main>
+
+<script>
+let state = null, autoTimer = null, selected = null;
+
+async function api(url, method = "GET", body = null) {
+  const opts = { method, headers: { "Content-Type": "application/json" } };
+  if (body) opts.body = JSON.stringify(body);
+  const res = await fetch(url, opts);
+  return res.json();
+}
+
+async function load() { const d = await api("/api/state"); render(d.state); }
+async function action(url) { const d = await api(url, "POST"); render(d.state); }
+
+function showMsg(id, text, isError) {
+  const el = document.getElementById(id);
+  el.textContent = text; el.className = "msg " + (isError ? "err" : "okm");
+  setTimeout(() => el.className = "msg", 3500);
+}
+
+async function addStop() {
+  const body = {
+    name: fName.value, neighborhood: fNeighborhood.value, time_to_next: fTime.value,
+    passengers: fPassengers.value, position: fPosition.value, reference: fRef.value
+  };
+  const d = await api("/api/stops", "POST", body);
+  render(d.state);
+  if (d.ok) { showMsg("msgAdd", "Stop added to the route ✔", false); fName.value = ""; fNeighborhood.value = ""; }
+  else showMsg("msgAdd", d.error, true);
+}
+
+async function deleteStop() {
+  const name = fDelete.value; if (!name) return;
+  if (!confirm(`Close the stop "${name}"?`)) return;
+  const d = await api("/api/stops/" + encodeURIComponent(name), "DELETE");
+  render(d.state);
+  showMsg("msgDelete", d.ok ? "Stop closed. The route was reconnected ✔" : d.error, !d.ok);
+}
+
+async function shortestRoute() {
+  const d = await api(`/api/shortest-route?origin=${encodeURIComponent(fOrigin.value)}&destination=${encodeURIComponent(fDestination.value)}`);
+  const el = document.getElementById("resShortest"); el.style.display = "block";
+  if (!d.ok) { el.textContent = d.error; return; }
+  const r = d.result;
+  if (r.direction === "none") { el.textContent = "Origin and destination are the same stop."; return; }
+  el.innerHTML = `Clockwise: <b>${r.clockwise_minutes} min</b> · Counterclockwise: <b>${r.counterclockwise_minutes} min</b><br>
+    Best option: <b style="color:var(--purple)">${r.direction}</b> (${r.minutes} min):<br>${r.stops.join(" → ")}`;
+}
+
+function toggleAuto() {
+  const b = document.getElementById("btnAuto");
+  if (autoTimer) { clearInterval(autoTimer); autoTimer = null; b.textContent = "⏵ Auto"; }
+  else { autoTimer = setInterval(() => action("/api/bus/move"), 1300); b.textContent = "⏸ Pause"; }
+}
+
+function fillSelect(id, names) {
+  const s = document.getElementById(id), previous = s.value;
+  s.innerHTML = names.map(n => `<option>${n}</option>`).join("");
+  if (names.includes(previous)) s.value = previous;
+}
+
+function showStop(name) {
+  selected = name;
+  const stop = state.stops.find(x => x.name === name);
+  const el = document.getElementById("stopInfo");
+  if (!stop) { el.style.display = "none"; return; }
+  el.style.display = "block";
+  el.innerHTML = `<b>${stop.name}</b> (${stop.neighborhood})<br>
+    Waiting passengers: ${stop.waiting_passengers}<br>
+    Minutes to next stop: ${stop.time_to_next}<br>
+    ⬅ prev: ${stop.prev} · next ➡: ${stop.next}`;
+}
+
+function render(s) {
+  state = s;
+  document.getElementById("routeName").textContent = s.route_name;
+  sStops.textContent = s.size;
+  sLap.textContent = s.lap_time;
+  sOnBoard.textContent = `${s.bus.passengers_on_board}/${s.bus.capacity}`;
+  sWaiting.textContent = s.total_waiting;
+
+  const names = s.clockwise_traversal;
+  ["fRef", "fDelete", "fOrigin", "fDestination"].forEach(id => fillSelect(id, names));
+  if (names.length > 1 && fDestination.value === fOrigin.value && !fDestination.dataset.touched)
+    fDestination.selectedIndex = Math.floor(names.length / 2);
+
+  const ccw = s.counterclockwise_traversal;
+  tCw.textContent = names.length ? names.join(" → ") + " → (back to " + names[0] + ")" : "Empty route";
+  tCcw.textContent = ccw.length ? ccw.join(" → ") + " → (back to " + ccw[0] + ")" : "Empty route";
+
+  eventLog.innerHTML = s.history.map(h => `<li>${h}</li>`).join("");
+
+  memory.innerHTML = s.stops.map(stop => `
+    <div class="node ${stop.name === s.head ? "head" : ""}">
+      <div class="t">${stop.name === s.head ? "HEAD · " : ""}${stop.name}</div>
+      <div class="c"><span class="p">prev →</span> ${stop.prev}</div>
+      <div class="c">Neighborhood: ${stop.neighborhood}</div>
+      <div class="c">Waiting: ${stop.waiting_passengers} · ${stop.time_to_next} min</div>
+      <div class="c"><span class="p">next →</span> ${stop.next}</div>
+    </div>`).join("") || "<p style='color:var(--muted)'>The list is empty (head = None)</p>";
+
+  drawMap(s);
+  if (selected) showStop(selected);
+}
+
+function drawMap(s) {
+  const svg = document.getElementById("map");
+  const cx = 300, cy = 255, R = 185, n = s.stops.length;
+  const cw = s.bus.direction === "clockwise";
+  const color = cw ? "#4f7cff" : "#ff7a2f";
+  let html = `
+    <defs>
+      <marker id="arrow" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="${color}"/></marker>
+    </defs>
+    <circle cx="${cx}" cy="${cy}" r="${R}" fill="none" stroke="#dfe3ef" stroke-width="16"/>
+    <text x="${cx}" y="${cy - 10}" text-anchor="middle" font-size="15" font-weight="700" fill="#1f2a52">${cw ? "Clockwise" : "Counterclockwise"}</text>
+    <text x="${cx}" y="${cy + 14}" text-anchor="middle" font-size="13" fill="#6b7394">${cw ? "uses the next pointer ↻" : "uses the prev pointer ↺"}</text>
+    <text x="${cx}" y="${cy + 36}" text-anchor="middle" font-size="13" fill="#6b7394">Bus at: ${s.bus.location ?? "—"}</text>`;
+
+  if (n === 0) { svg.innerHTML = html + `<text x="${cx}" y="${cy + 70}" text-anchor="middle" fill="#e54b4b">Empty route</text>`; return; }
+
+  const pos = s.stops.map((stop, i) => {
+    const ang = -Math.PI / 2 + (2 * Math.PI * i) / n;
+    return { x: cx + R * Math.cos(ang), y: cy + R * Math.sin(ang), ang, stop };
+  });
+
+  // Direction arrows between stops (segments)
+  if (n > 1) pos.forEach((a, i) => {
+    const b = pos[(i + 1) % n];
+    const a1 = a.ang + 0.13, a2 = (i + 1 === n ? b.ang + 2 * Math.PI : b.ang) - 0.13;
+    const x1 = cx + R * Math.cos(a1), y1 = cy + R * Math.sin(a1);
+    const x2 = cx + R * Math.cos(a2), y2 = cy + R * Math.sin(a2);
+    const large = (a2 - a1) > Math.PI ? 1 : 0;
+    const d = cw ? `M${x1},${y1} A${R},${R} 0 ${large} 1 ${x2},${y2}` : `M${x2},${y2} A${R},${R} 0 ${large} 0 ${x1},${y1}`;
+    html += `<path d="${d}" fill="none" stroke="${color}" stroke-width="3" marker-end="url(#arrow)"/>`;
+    const am = (a1 + a2) / 2;
+    html += `<text x="${cx + (R - 26) * Math.cos(am)}" y="${cy + (R - 26) * Math.sin(am) + 4}" text-anchor="middle" font-size="11" fill="#6b7394">${a.stop.time_to_next}′</text>`;
+  });
+
+  pos.forEach(({ x, y, ang, stop }) => {
+    const isHead = stop.name === s.head, isBus = stop.name === s.bus.location;
+    const c = Math.cos(ang), sn = Math.sin(ang);
+    const anchor = c > 0.3 ? "start" : c < -0.3 ? "end" : "middle";
+    const tx = x + (anchor === "start" ? 30 : anchor === "end" ? -30 : 0);
+    const ty = y + (anchor === "middle" ? (sn < 0 ? -34 : 40) : -2);
+    html += `<g class="svg-node" onclick="showStop('${stop.name.replace(/'/g, "\\'")}')">
+      <circle cx="${x}" cy="${y}" r="${isBus ? 22 : 15}" fill="${isHead ? "#ff7a2f" : "#1f2a52"}" stroke="${isBus ? "#19b37a" : "#fff"}" stroke-width="${isBus ? 5 : 3}"/>
+      <text x="${x}" y="${y + 4}" text-anchor="middle" font-size="${isBus ? 16 : 11}" fill="#fff" font-weight="700">${isBus ? "🚌" : stop.waiting_passengers}</text>
+      <text x="${tx}" y="${ty}" text-anchor="${anchor}" font-size="12" font-weight="600" fill="#1f2a52">${stop.name}</text>
+      <text x="${tx}" y="${ty + 14}" text-anchor="${anchor}" font-size="10.5" fill="#6b7394">${isBus ? stop.waiting_passengers + " waiting" : stop.neighborhood}</text>
+    </g>`;
+  });
+  svg.innerHTML = html;
+}
+
+fDestination.addEventListener("change", () => fDestination.dataset.touched = "1");
+load();
+</script>
+</body>
+</html>
